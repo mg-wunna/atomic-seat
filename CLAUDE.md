@@ -11,6 +11,7 @@ Single-project monorepo template for vibe-coded demo apps. Three apps + one shar
 | `apps/server` | Hono + oRPC + Mongoose (Bun) | 3000 | Render (staging) / Docker on VPS (prod) |
 | `apps/website` | Next.js 15 SSG | 3001 | Cloudflare Pages |
 | `apps/dashboard` | Vite + React 19 | 3002 | Cloudflare Pages |
+| `packages/api` | `@template/api` (oRPC contract + zod schemas) | — | workspace consumer |
 | `packages/configs` | `@template/configs` (ports, cors, env) | — | workspace consumer |
 
 No turbo. No custom CLI. Pure Bun workspaces + `package.json` scripts.

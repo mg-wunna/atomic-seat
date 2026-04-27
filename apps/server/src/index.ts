@@ -5,13 +5,12 @@ import { ports } from "@template/configs/ports";
 import { OpenAPIGenerator } from "@orpc/openapi";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { RPCHandler } from "@orpc/server/fetch";
-import { os } from "@orpc/server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { rateLimiter } from "hono-rate-limiter";
 import mongoose from "mongoose";
-import { z } from "zod";
+import { appRouter } from "./router.js";
 
 const app = new Hono();
 
@@ -57,26 +56,9 @@ app.use(
   }),
 );
 
-// Health check
+// Liveness probe (Render healthcheck path = /health). Kept outside oRPC so it has
+// zero dependencies on the router. The contract also exposes /v1/health for clients.
 app.get("/health", (c) => c.json({ status: "ok", timestamp: Date.now() }));
-
-// --- oRPC Router ---
-// Example procedure — replace with your product's API
-const exampleRouter = os.router({
-  hello: os
-    .route({ method: "GET", path: "/hello" })
-    .input(z.object({ name: z.string().optional() }))
-    .handler(({ input }) => {
-      return { message: `Hello, ${input.name ?? "World"}!` };
-    }),
-  version: os.route({ method: "GET", path: "/version" }).handler(() => {
-    return { version: "0.2.0", uptime: process.uptime(), node: process.version };
-  }),
-});
-
-const appRouter = os.router({
-  example: exampleRouter,
-});
 
 // --- OpenAPI spec + Scalar docs ---
 const generator = new OpenAPIGenerator({});

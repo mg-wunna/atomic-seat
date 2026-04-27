@@ -4,13 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --watch src/index.ts",
+    "dev": "bun --env-file=../../.env.development --watch src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun --packages external",
-    "start": "bun dist/index.js",
+    "start": "bun --env-file=../../.env.production dist/index.js",
+    "seed": "bun --env-file=../../.env.development src/seed.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@template/api": "workspace:*",
     "@template/configs": "workspace:*",
+    "@orpc/contract": "^1.12.2",
     "@orpc/openapi": "^1.12.2",
     "@orpc/server": "^1.12.2",
     "hono": "^4.8.2",
