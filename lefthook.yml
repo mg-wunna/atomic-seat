@@ -1,0 +1,21 @@
+pre-commit:
+  parallel: true
+  commands:
+    format-staged:
+      glob: "*.{ts,tsx,js,jsx,json,css}"
+      run: bunx biome format --write --staged --no-errors-on-unmatched
+      stage_fixed: true
+    lint:
+      run: bun run lint
+    typecheck:
+      run: bun run typecheck
+
+pre-push:
+  parallel: true
+  commands:
+    build:
+      run: bun run build
+    lint:
+      run: bun run lint
+    typecheck:
+      run: bun run typecheck

@@ -1,0 +1,57 @@
+name: template
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DOMAIN=${DOMAIN:-localhost}
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production-min-32-chars!!}
+      - MONGO_URI=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-password}@mongo:27017/template?authSource=admin
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-devpassword}@redis:6379
+      - STORAGE_PATH=/app/storage
+    volumes:
+      - storage:/app/storage
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:8
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER:-admin}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-password}
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-devpassword}"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+  redis_data:
+  storage:
+
+networks:
+  backend:

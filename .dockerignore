@@ -1,0 +1,21 @@
+# Secrets — never include in Docker image layers
+secrets/
+
+# Git and CI
+.git
+.github
+.claude
+
+# Build artifacts and caches
+**/node_modules
+.turbo
+.next
+dist
+out
+coverage
+.playwright-mcp
+playwright-report
+
+# Documentation
+*.md
+docs

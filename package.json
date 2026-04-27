@@ -1,0 +1,40 @@
+{
+  "name": "template",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "prepare": "lefthook install",
+    "dev": "bun --filter '*' dev",
+    "dev:server": "bun --filter server dev",
+    "dev:website": "bun --filter website dev",
+    "dev:dashboard": "bun --filter dashboard dev",
+    "build": "bun --filter '*' build",
+    "build:server": "bun --filter server build",
+    "build:website": "bun --filter website build",
+    "build:dashboard": "bun --filter dashboard build",
+    "start:server": "bun --filter server start",
+    "test": "bun --filter '*' test",
+    "typecheck": "bun --filter '*' typecheck",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.10",
+    "@types/bun": "^1.3.11",
+    "@types/node": "^22.13.14",
+    "lefthook": "^2.1.4",
+    "typescript": "^5"
+  },
+  "packageManager": "bun@1.3.10"
+}

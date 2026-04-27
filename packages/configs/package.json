@@ -1,0 +1,17 @@
+{
+  "name": "@template/configs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./ports": "./src/ports.ts",
+    "./cors": "./src/cors.ts",
+    "./env": "./src/env.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}
