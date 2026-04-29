@@ -27,6 +27,7 @@ jobs:
         env:
           NODE_ENV: production
           NEXT_PUBLIC_API_URL: ${{ secrets.STAGING_API_URL }}
+          NEXT_PUBLIC_DASHBOARD_URL: ${{ secrets.STAGING_DASHBOARD_URL }}
 
       - name: Build dashboard
         run: bun run build:dashboard
@@ -58,7 +59,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy website-dist --project-name=staging-website
+          command: pages deploy website-dist --project-name=atomic-seat-website
 
   deploy-dashboard:
     needs: build-static
@@ -72,7 +73,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dashboard-dist --project-name=staging-dashboard
+          command: pages deploy dashboard-dist --project-name=atomic-seat-dashboard
 
   deploy-server:
     runs-on: ubuntu-24.04
