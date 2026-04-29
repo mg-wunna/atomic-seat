@@ -1,5 +1,5 @@
 {
-  "name": "@template/configs",
+  "name": "@atomic-seat/configs",
   "version": "0.0.0",
   "private": true,
   "type": "module",

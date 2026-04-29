@@ -29,6 +29,13 @@ Open:
 - Admin dashboard: `http://localhost:3002`
 - OpenAPI docs: `http://localhost:3000/docs`
 
+## Live Demo
+
+- Website buyer flow: `https://atomic-seat-website.pages.dev`
+- Admin dashboard: `https://atomic-seat-dashboard.pages.dev`
+- API: `https://atomic-seat.onrender.com`
+- OpenAPI docs: `https://atomic-seat.onrender.com/docs`
+
 ## Core Commands
 
 ```bash
@@ -142,6 +149,9 @@ AI usage: The project was built with AI assistance, but the critical concurrency
 
 ## Links
 
+- Live demo: `https://atomic-seat-website.pages.dev`
+- Admin demo: `https://atomic-seat-dashboard.pages.dev`
+- API docs: `https://atomic-seat.onrender.com/docs`
 - Portfolio: `https://mg-wunna.vercel.app/`
 - Email: `mgwunna.mw@icloud.com`
 - Repository: `https://github.com/mg-wunna/atomic-seat`

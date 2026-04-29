@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { ports } from "@template/configs/ports";
+import { ports } from "@atomic-seat/configs/ports";
 
 const ROOT = resolve("out");
 

@@ -1,5 +1,5 @@
-import { corsOriginHandler } from "@template/configs/cors";
-import { ports } from "@template/configs/ports";
+import { corsOriginHandler } from "@atomic-seat/configs/cors";
+import { ports } from "@atomic-seat/configs/ports";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { initializeDataSource } from "./data-source.js";

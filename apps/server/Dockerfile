@@ -4,10 +4,11 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json ./
 COPY apps/server/package.json ./apps/server/
+COPY packages/api/package.json ./packages/api/
 COPY packages/configs/package.json ./packages/configs/
 RUN bun -e " \
   const pkg = JSON.parse(await Bun.file('package.json').text()); \
-  pkg.workspaces = ['apps/server', 'packages/configs']; \
+  pkg.workspaces = ['apps/server', 'packages/api', 'packages/configs']; \
   await Bun.write('package.json', JSON.stringify(pkg, null, 2)); \
 "
 RUN bun install --ignore-scripts
@@ -20,6 +21,7 @@ RUN tar xzf /tmp/node_modules.tar.gz -C / && rm /tmp/node_modules.tar.gz
 COPY apps/server/src ./apps/server/src
 COPY apps/server/package.json ./apps/server/
 COPY apps/server/tsconfig.json ./apps/server/
+COPY packages/api ./packages/api
 COPY packages/configs ./packages/configs
 ENV NODE_ENV=production
 EXPOSE 3000

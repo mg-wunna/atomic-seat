@@ -17,7 +17,7 @@
       "name": "dashboard",
       "version": "0.0.0",
       "dependencies": {
-        "@template/configs": "workspace:*",
+        "@atomic-seat/configs": "workspace:*",
         "react": "^19.1.0",
         "react-dom": "^19.1.0",
         "react-router-dom": "^7.10.1",
@@ -37,8 +37,8 @@
         "@orpc/contract": "^1.12.2",
         "@orpc/openapi": "^1.12.2",
         "@orpc/server": "^1.12.2",
-        "@template/api": "workspace:*",
-        "@template/configs": "workspace:*",
+        "@atomic-seat/api": "workspace:*",
+        "@atomic-seat/configs": "workspace:*",
         "@types/better-sqlite3": "^7.6.13",
         "@types/cors": "^2.8.19",
         "@types/express": "^5.0.6",
@@ -62,7 +62,7 @@
       "name": "website",
       "version": "0.0.0",
       "dependencies": {
-        "@template/configs": "workspace:*",
+        "@atomic-seat/configs": "workspace:*",
         "next": "^15.3.3",
         "react": "^19.1.0",
         "react-dom": "^19.1.0",
@@ -74,7 +74,7 @@
       },
     },
     "packages/api": {
-      "name": "@template/api",
+      "name": "@atomic-seat/api",
       "version": "0.0.0",
       "dependencies": {
         "@orpc/contract": "^1.12.2",
@@ -85,7 +85,7 @@
       },
     },
     "packages/configs": {
-      "name": "@template/configs",
+      "name": "@atomic-seat/configs",
       "version": "0.0.0",
       "devDependencies": {
         "typescript": "^5",
@@ -371,9 +371,9 @@
 
     "@swc/helpers": ["@swc/helpers@0.5.15", "", { "dependencies": { "tslib": "^2.8.0" } }, "sha512-JQ5TuMi45Owi4/BIMAJBoSQoOJu12oOk/gADqlcUL9JEdHB8vyjUSsxqeNXnmXHjYKMi2WcYtezGEEhqUI/E2g=="],
 
-    "@template/api": ["@template/api@workspace:packages/api"],
+    "@atomic-seat/api": ["@atomic-seat/api@workspace:packages/api"],
 
-    "@template/configs": ["@template/configs@workspace:packages/configs"],
+    "@atomic-seat/configs": ["@atomic-seat/configs@workspace:packages/configs"],
 
     "@types/babel__core": ["@types/babel__core@7.20.5", "", { "dependencies": { "@babel/parser": "^7.20.7", "@babel/types": "^7.20.7", "@types/babel__generator": "*", "@types/babel__template": "*", "@types/babel__traverse": "*" } }, "sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA=="],
 
