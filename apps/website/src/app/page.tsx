@@ -1,277 +1,256 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
-const WS_URL = API_URL.replace(/^http/, "ws");
+const DASHBOARD_URL = process.env.NEXT_PUBLIC_DASHBOARD_URL || "http://localhost:3002";
+const PORTFOLIO_URL = process.env.NEXT_PUBLIC_PORTFOLIO_URL || "https://mg-wunna.vercel.app/";
+const REPO_URL = process.env.NEXT_PUBLIC_REPO_URL || "https://github.com/mg-wunna/atomic-seat";
+const EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL || "mgwunna.mw@icloud.com";
+const DOCS_URL = `${API_URL}/docs`;
 
-interface HealthResponse {
-  status: string;
-  timestamp: number;
+const images = {
+  hero: "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=2200&q=85",
+  orion:
+    "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=1400&q=82",
+  velvet:
+    "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1400&q=82",
+  static:
+    "https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=1400&q=82",
+};
+
+type Concert = {
+  id: string;
+  name: string;
+  venue: string;
+  startsAt: string;
+  inventory: {
+    vipAvailable: number;
+    generalAvailable: number;
+    totalAvailable: number;
+    pending: number;
+    sold: number;
+  };
+};
+
+async function api<T>(path: string): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error?.message ?? "Request failed");
+  return payload.data as T;
 }
 
-interface WsMessage {
-  type: string;
-  timestamp: number;
-  data?: string;
+function eventImage(concertId: string) {
+  if (concertId.includes("velvet")) return images.velvet;
+  if (concertId.includes("static")) return images.static;
+  return images.orion;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 export default function Home() {
-  const [healthResult, setHealthResult] = useState<string | null>(null);
-  const [healthLoading, setHealthLoading] = useState(false);
-  const [wsStatus, setWsStatus] = useState<"disconnected" | "connecting" | "connected">(
-    "disconnected",
+  const [concerts, setConcerts] = useState<Concert[]>([]);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api<Concert[]>("/concerts")
+      .then(setConcerts)
+      .catch((err) => setError(err instanceof Error ? err.message : "Could not load concerts"));
+  }, []);
+
+  const totalAvailable = concerts.reduce(
+    (sum, concert) => sum + concert.inventory.totalAvailable,
+    0,
   );
-  const [wsMessages, setWsMessages] = useState<string[]>([]);
-  const wsRef = useRef<WebSocket | null>(null);
-
-  const pingHealth = useCallback(async () => {
-    setHealthLoading(true);
-    setHealthResult(null);
-    try {
-      const res = await fetch(`${API_URL}/health`);
-      const data: HealthResponse = await res.json();
-      setHealthResult(`${data.status} - ${new Date(data.timestamp).toLocaleTimeString()}`);
-    } catch (err) {
-      setHealthResult(`Error: ${err instanceof Error ? err.message : "Failed to connect"}`);
-    } finally {
-      setHealthLoading(false);
-    }
-  }, []);
-
-  const toggleSocket = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-      return;
-    }
-
-    setWsStatus("connecting");
-    setWsMessages([]);
-    const ws = new WebSocket(`${WS_URL}/ws`);
-
-    ws.onopen = () => {
-      setWsStatus("connected");
-      setWsMessages((prev) => [...prev, "Connected"]);
-    };
-
-    ws.onmessage = (event) => {
-      const msg: WsMessage = JSON.parse(event.data);
-      const time = new Date(msg.timestamp).toLocaleTimeString();
-      setWsMessages((prev) => [...prev, `${msg.type} - ${time}`]);
-    };
-
-    ws.onclose = () => {
-      setWsStatus("disconnected");
-      setWsMessages((prev) => [...prev, "Disconnected"]);
-      wsRef.current = null;
-    };
-
-    ws.onerror = () => {
-      setWsStatus("disconnected");
-      setWsMessages((prev) => [...prev, "Connection failed"]);
-      wsRef.current = null;
-    };
-
-    wsRef.current = ws;
-  }, []);
-
-  const sendPing = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send("ping");
-      setWsMessages((prev) => [...prev, "Sent: ping"]);
-    }
-  }, []);
+  const pending = concerts.reduce((sum, concert) => sum + concert.inventory.pending, 0);
+  const featured = concerts[0];
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>Template Project</h1>
-        <p style={styles.description}>
-          A reusable scaffold for building products. Copy this template to create a new app with
-          server, dashboard, website, and mobile — all pre-configured.
-        </p>
-
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>Health Check</h2>
-          <p style={styles.sectionDesc}>Ping the server&apos;s /health endpoint</p>
-          <button type="button" onClick={pingHealth} disabled={healthLoading} style={styles.button}>
-            {healthLoading ? "Pinging..." : "Ping Health"}
-          </button>
-          {healthResult && (
-            <div
-              style={{
-                ...styles.result,
-                ...(healthResult.startsWith("Error") ? styles.resultError : styles.resultSuccess),
-              }}
-            >
-              {healthResult}
-            </div>
-          )}
-        </div>
-
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>WebSocket</h2>
-          <p style={styles.sectionDesc}>Connect to the server via WebSocket</p>
-          <div style={styles.buttonRow}>
-            <button
-              type="button"
-              onClick={toggleSocket}
-              style={{
-                ...styles.button,
-                ...(wsStatus === "connected" ? styles.buttonDanger : {}),
-              }}
-            >
-              {wsStatus === "connected"
-                ? "Disconnect"
-                : wsStatus === "connecting"
-                  ? "Connecting..."
-                  : "Connect"}
-            </button>
-            {wsStatus === "connected" && (
-              <button type="button" onClick={sendPing} style={styles.buttonOutline}>
-                Send Ping
-              </button>
-            )}
+    <main>
+      <section
+        className="home-hero"
+        id="top"
+        style={{
+          backgroundImage: `linear-gradient(90deg, rgba(7,8,12,.9), rgba(7,8,12,.56), rgba(7,8,12,.2)), url(${images.hero})`,
+        }}
+      >
+        <header className="site-shell floating-nav">
+          <a className="brand mark-on-dark" href="#top" aria-label="AtomicSeat home">
+            <img src="/logo.svg" alt="" />
+            AtomicSeat
+          </a>
+          <div className="nav-links nav-on-dark">
+            <a href="/reserve">Reserve seats</a>
+            <a href="#lineup">Lineup</a>
+            <a href="#case-study">Case study</a>
+            <a href={DOCS_URL}>API docs</a>
+            <a href={DASHBOARD_URL}>Admin</a>
           </div>
-          {wsMessages.length > 0 && (
-            <div style={styles.log}>
-              {wsMessages.map((msg, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: append-only log
-                <div key={i} style={styles.logLine}>
-                  {msg}
-                </div>
-              ))}
+        </header>
+
+        <div className="site-shell hero-inner">
+          <div className="hero-copy">
+            <p className="eyebrow">Atomic reservations for high-demand concerts</p>
+            <h1>Seat holds that feel instant and never oversell.</h1>
+            <p>
+              A polished concert ticketing case study with seat-level inventory, five-minute holds,
+              Stripe-style checkout, and transaction-backed protection under concurrency.
+            </p>
+            <div className="hero-actions">
+              <a className="primary-action light" href="/reserve">
+                Reserve a seat
+              </a>
+              <a className="secondary-action glass" href="#case-study">
+                View case study
+              </a>
             </div>
-          )}
+          </div>
+
+          <section
+            className="hero-reservation-card"
+            aria-label="Live AtomicSeat reservation preview"
+          >
+            <img src={featured ? eventImage(featured.id) : images.orion} alt="" />
+            <div className="ticket-cut">
+              <span>Live ticket desk</span>
+              <strong>{featured?.name ?? "Orion Pulse Live"}</strong>
+              <small>{featured ? formatDate(featured.startsAt) : "Next show"}</small>
+            </div>
+            <div className="reservation-rows">
+              <div>
+                <span>General seats</span>
+                <strong>{featured?.inventory.generalAvailable ?? 90}</strong>
+              </div>
+              <div>
+                <span>VIP seats</span>
+                <strong>{featured?.inventory.vipAvailable ?? 18}</strong>
+              </div>
+              <div>
+                <span>Pending holds</span>
+                <strong>{featured?.inventory.pending ?? 0}</strong>
+              </div>
+            </div>
+            <a href={featured ? `/reserve?concert=${featured.id}` : "/reserve"}>Open seat map</a>
+          </section>
         </div>
 
-        <div style={styles.footer}>
-          <span style={styles.dot} /> API: {API_URL}
+        <div className="site-shell hero-metrics">
+          <div>
+            <span>Available now</span>
+            <strong>{totalAvailable || 234}</strong>
+          </div>
+          <div>
+            <span>Active holds</span>
+            <strong>{pending}</strong>
+          </div>
+          <div>
+            <span>Hold TTL</span>
+            <strong>5 min</strong>
+          </div>
         </div>
-      </div>
-    </div>
+      </section>
+
+      <section className="site-shell editorial-strip">
+        <div>
+          <span>Buyer view</span>
+          <strong>Concert discovery, seat selection, reserve, pay.</strong>
+        </div>
+        <div>
+          <span>Admin view</span>
+          <strong>Inventory, reservations, pending holds, cleanup.</strong>
+        </div>
+        <div>
+          <span>Backend proof</span>
+          <strong>TypeORM transaction plus rollback test.</strong>
+        </div>
+      </section>
+
+      <section className="site-shell section" id="lineup">
+        <div className="section-heading wide-heading">
+          <p className="kicker">Now booking</p>
+          <h2>Live inventory with premium event cards.</h2>
+        </div>
+        {error && <p className="form-error">{error}</p>}
+        <div className="event-grid">
+          {concerts.map((concert) => (
+            <article className="event-card" key={concert.id}>
+              <img src={eventImage(concert.id)} alt="" />
+              <div className="event-card-content">
+                <span>{formatDate(concert.startsAt)}</span>
+                <h3>{concert.name}</h3>
+                <p>{concert.venue}</p>
+                <div className="event-stock">
+                  <strong>{concert.inventory.vipAvailable}</strong>
+                  <small>VIP</small>
+                  <strong>{concert.inventory.generalAvailable}</strong>
+                  <small>General</small>
+                </div>
+                <a href={`/reserve?concert=${concert.id}`}>Select seats</a>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="case-study-band" id="case-study">
+        <div className="site-shell case-study-grid">
+          <div>
+            <p className="kicker">Case study</p>
+            <h2>Designed to explain the hard part in an interview.</h2>
+          </div>
+          <div className="phase-list">
+            {[
+              [
+                "01",
+                "Seat-level inventory",
+                "Every seat is a Ticket row with AVAILABLE, HELD, or SOLD status.",
+              ],
+              [
+                "02",
+                "Atomic reserve",
+                "Stock decrement, PENDING reservation, and seat hold commit in one transaction.",
+              ],
+              [
+                "03",
+                "TTL cleanup",
+                "Expired PENDING holds are released so seats become bookable again.",
+              ],
+              [
+                "04",
+                "OpenAPI docs",
+                "API documentation is generated from /openapi.json and rendered with Scalar.",
+              ],
+            ].map(([num, title, body]) => (
+              <article className="phase" key={num}>
+                <span>{num}</span>
+                <div>
+                  <h3>{title}</h3>
+                  <p>{body}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <footer className="site-shell footer">
+        <div>
+          <strong>AtomicSeat</strong>
+          <p>Built by Mg Wunna as a full-stack concurrency case study.</p>
+        </div>
+        <div className="footer-links">
+          <a href={PORTFOLIO_URL}>Portfolio</a>
+          <a href={`mailto:${EMAIL}`}>{EMAIL}</a>
+          <a href={REPO_URL}>GitHub</a>
+        </div>
+      </footer>
+    </main>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f8f9fa",
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    padding: 24,
-    margin: 0,
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 40,
-    maxWidth: 480,
-    width: "100%",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.08), 0 8px 30px rgba(0,0,0,0.04)",
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 700,
-    margin: "0 0 8px",
-    color: "#111",
-  },
-  description: {
-    fontSize: 15,
-    lineHeight: 1.6,
-    color: "#666",
-    margin: "0 0 32px",
-  },
-  section: {
-    marginBottom: 28,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 600,
-    margin: "0 0 4px",
-    color: "#333",
-  },
-  sectionDesc: {
-    fontSize: 13,
-    color: "#999",
-    margin: "0 0 12px",
-  },
-  button: {
-    padding: "10px 20px",
-    fontSize: 14,
-    fontWeight: 600,
-    border: "none",
-    borderRadius: 8,
-    cursor: "pointer",
-    backgroundColor: "#111",
-    color: "#fff",
-  },
-  buttonDanger: {
-    backgroundColor: "#e53e3e",
-  },
-  buttonOutline: {
-    padding: "10px 20px",
-    fontSize: 14,
-    fontWeight: 600,
-    border: "1.5px solid #ddd",
-    borderRadius: 8,
-    cursor: "pointer",
-    backgroundColor: "#fff",
-    color: "#333",
-  },
-  buttonRow: {
-    display: "flex",
-    gap: 8,
-  },
-  result: {
-    marginTop: 12,
-    padding: "10px 14px",
-    borderRadius: 8,
-    fontSize: 13,
-    fontFamily: "monospace",
-  },
-  resultSuccess: {
-    backgroundColor: "#f0fdf4",
-    color: "#16a34a",
-    border: "1px solid #bbf7d0",
-  },
-  resultError: {
-    backgroundColor: "#fef2f2",
-    color: "#dc2626",
-    border: "1px solid #fecaca",
-  },
-  log: {
-    marginTop: 12,
-    padding: 14,
-    backgroundColor: "#1a1a1a",
-    borderRadius: 8,
-    maxHeight: 160,
-    overflowY: "auto" as const,
-  },
-  logLine: {
-    fontSize: 12,
-    fontFamily: "monospace",
-    color: "#a3e635",
-    lineHeight: 1.8,
-  },
-  footer: {
-    paddingTop: 20,
-    borderTop: "1px solid #f0f0f0",
-    fontSize: 12,
-    color: "#999",
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: "50%",
-    backgroundColor: "#a3e635",
-    display: "inline-block",
-  },
-};

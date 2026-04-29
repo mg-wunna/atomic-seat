@@ -43,6 +43,7 @@ playwright-report
 test-results
 
 # AI coding assistants — never commit local agent state, plans, sessions, or MCP keys
+.agents/
 .claude/
 .cursor/
 .cursorrules
@@ -61,6 +62,7 @@ test-results
 .ideas/
 .mcp.json
 CLAUDE.local.md
+AGENTS.md
 AGENTS.local.md
 GEMINI.local.md
 

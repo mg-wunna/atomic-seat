@@ -12,7 +12,8 @@
   "dependencies": {
     "@template/configs": "workspace:*",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.10.1"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",

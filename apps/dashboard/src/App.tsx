@@ -1,276 +1,557 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import "./styles.css";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
-const WS_URL = API_URL.replace(/^http/, "ws");
 
-interface HealthResponse {
-  status: string;
-  timestamp: number;
+type Status = "PENDING" | "COMPLETED" | "EXPIRED";
+type Category = "VIP" | "General";
+
+type Concert = {
+  id: string;
+  name: string;
+  venue: string;
+  startsAt: string;
+  inventory: {
+    vipAvailable: number;
+    generalAvailable: number;
+    totalAvailable: number;
+    pending: number;
+    sold: number;
+  };
+};
+
+type Reservation = {
+  id: string;
+  concertId: string;
+  concertName: string;
+  category: Category;
+  quantity: number;
+  status: Status;
+  amountCents: number;
+  paymentStatus: "UNPAID" | "CHECKOUT_CREATED" | "PAID";
+  paymentId: string | null;
+  checkoutSessionId: string | null;
+  expiresAt: string;
+  createdAt: string;
+};
+
+type Metrics = {
+  concerts: number;
+  tickets: number;
+  available: number;
+  pending: number;
+  completed: number;
+  expired: number;
+};
+
+type ConcertDetail = Concert & {
+  recentReservations: Reservation[];
+};
+
+const emptyMetrics: Metrics = {
+  concerts: 0,
+  tickets: 0,
+  available: 0,
+  pending: 0,
+  completed: 0,
+  expired: 0,
+};
+
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: { "Content-Type": "application/json", ...init?.headers },
+    ...init,
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error?.message ?? "Request failed");
+  }
+  return payload.data as T;
 }
 
-interface WsMessage {
-  type: string;
-  timestamp: number;
-  data?: string;
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatMoney(cents: number): string {
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(
+    cents / 100,
+  );
+}
+
+function Countdown({ expiresAt }: { expiresAt: string }) {
+  const [remaining, setRemaining] = useState(() => Math.max(0, Date.parse(expiresAt) - Date.now()));
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setRemaining(Math.max(0, Date.parse(expiresAt) - Date.now()));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [expiresAt]);
+
+  const minutes = Math.floor(remaining / 60_000);
+  const seconds = Math.floor((remaining % 60_000) / 1000);
+  return (
+    <span className={remaining === 0 ? "countdown expired" : "countdown"}>
+      {remaining === 0 ? "Expired" : `${minutes}:${String(seconds).padStart(2, "0")}`}
+    </span>
+  );
+}
+
+function StatusBadge({ status }: { status: Status }) {
+  return <span className={`badge ${status.toLowerCase()}`}>{status}</span>;
 }
 
 export function App() {
-  const [healthResult, setHealthResult] = useState<string | null>(null);
-  const [healthLoading, setHealthLoading] = useState(false);
-  const [wsStatus, setWsStatus] = useState<"disconnected" | "connecting" | "connected">(
-    "disconnected",
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [concerts, setConcerts] = useState<Concert[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [metrics, setMetrics] = useState<Metrics>(emptyMetrics);
+  const [selectedConcertId, setSelectedConcertId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ConcertDetail | null>(null);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const selectedConcert = useMemo(
+    () => concerts.find((concert) => concert.id === selectedConcertId) ?? concerts[0],
+    [concerts, selectedConcertId],
   );
-  const [wsMessages, setWsMessages] = useState<string[]>([]);
-  const wsRef = useRef<WebSocket | null>(null);
 
-  const pingHealth = useCallback(async () => {
-    setHealthLoading(true);
-    setHealthResult(null);
+  const loadData = useCallback(async () => {
+    const [metricsData, concertData, reservationData] = await Promise.all([
+      api<Metrics>("/metrics"),
+      api<Concert[]>(`/concerts?upcoming=true&search=${encodeURIComponent(search)}`),
+      api<Reservation[]>("/reservations"),
+    ]);
+    setMetrics(metricsData);
+    setConcerts(concertData);
+    setReservations(reservationData);
+    const firstConcert = concertData[0];
+    if (!selectedConcertId && firstConcert) setSelectedConcertId(firstConcert.id);
+  }, [search, selectedConcertId]);
+
+  const loadDetail = useCallback(async (concertId: string) => {
+    setDetail(await api<ConcertDetail>(`/concerts/${concertId}`));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    loadData()
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load data");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!selectedConcert?.id) return;
+    loadDetail(selectedConcert.id).catch((err) =>
+      setError(err instanceof Error ? err.message : "Failed to load concert"),
+    );
+    const timer = window.setInterval(() => {
+      loadData().catch(() => undefined);
+      loadDetail(selectedConcert.id).catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [loadData, loadDetail, selectedConcert?.id]);
+
+  async function handlePurchase(reservationId: string) {
+    setActionLoading(true);
+    setError(null);
+    setNotice(null);
     try {
-      const res = await fetch(`${API_URL}/health`);
-      const data: HealthResponse = await res.json();
-      setHealthResult(`${data.status} - ${new Date(data.timestamp).toLocaleTimeString()}`);
+      await api("/purchase", { method: "POST", body: JSON.stringify({ reservationId }) });
+      setNotice("Purchase completed.");
+      await loadData();
+      if (selectedConcert?.id) await loadDetail(selectedConcert.id);
     } catch (err) {
-      setHealthResult(`Error: ${err instanceof Error ? err.message : "Failed to connect"}`);
+      setError(err instanceof Error ? err.message : "Purchase failed");
     } finally {
-      setHealthLoading(false);
+      setActionLoading(false);
     }
-  }, []);
+  }
 
-  const toggleSocket = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-      return;
+  async function handleCleanup() {
+    setActionLoading(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await api<{ expiredReservations: number; releasedTickets: number }>(
+        "/cleanup",
+        {
+          method: "POST",
+          body: JSON.stringify({ limit: 100 }),
+        },
+      );
+      setNotice(
+        `Expired ${result.expiredReservations} reservation(s), released ${result.releasedTickets} ticket(s).`,
+      );
+      await loadData();
+      if (selectedConcert?.id) await loadDetail(selectedConcert.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cleanup failed");
+    } finally {
+      setActionLoading(false);
     }
+  }
 
-    setWsStatus("connecting");
-    setWsMessages([]);
-    const ws = new WebSocket(`${WS_URL}/ws`);
-
-    ws.onopen = () => {
-      setWsStatus("connected");
-      setWsMessages((prev) => [...prev, "Connected"]);
-    };
-
-    ws.onmessage = (event) => {
-      const msg: WsMessage = JSON.parse(event.data);
-      const time = new Date(msg.timestamp).toLocaleTimeString();
-      setWsMessages((prev) => [...prev, `${msg.type} - ${time}`]);
-    };
-
-    ws.onclose = () => {
-      setWsStatus("disconnected");
-      setWsMessages((prev) => [...prev, "Disconnected"]);
-      wsRef.current = null;
-    };
-
-    ws.onerror = () => {
-      setWsStatus("disconnected");
-      setWsMessages((prev) => [...prev, "Connection failed"]);
-      wsRef.current = null;
-    };
-
-    wsRef.current = ws;
-  }, []);
-
-  const sendPing = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send("ping");
-      setWsMessages((prev) => [...prev, "Sent: ping"]);
-    }
-  }, []);
+  const lowStock = concerts.filter((concert) => concert.inventory.totalAvailable < 30);
+  const currentTitle =
+    location.pathname === "/concerts"
+      ? "Inventory"
+      : location.pathname === "/reservations"
+        ? "Reservations"
+        : "Dashboard";
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>Template Project</h1>
-        <p style={styles.description}>
-          A reusable scaffold for building products. Copy this template to create a new app with
-          server, dashboard, website, and mobile — all pre-configured.
-        </p>
-
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>Health Check</h2>
-          <p style={styles.sectionDesc}>Ping the server&apos;s /health endpoint</p>
-          <button type="button" onClick={pingHealth} disabled={healthLoading} style={styles.button}>
-            {healthLoading ? "Pinging..." : "Ping Health"}
-          </button>
-          {healthResult && (
-            <div
-              style={{
-                ...styles.result,
-                ...(healthResult.startsWith("Error") ? styles.resultError : styles.resultSuccess),
-              }}
-            >
-              {healthResult}
-            </div>
-          )}
-        </div>
-
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>WebSocket</h2>
-          <p style={styles.sectionDesc}>Connect to the server via WebSocket</p>
-          <div style={styles.buttonRow}>
-            <button
-              type="button"
-              onClick={toggleSocket}
-              style={{
-                ...styles.button,
-                ...(wsStatus === "connected" ? styles.buttonDanger : {}),
-              }}
-            >
-              {wsStatus === "connected"
-                ? "Disconnect"
-                : wsStatus === "connecting"
-                  ? "Connecting..."
-                  : "Connect"}
-            </button>
-            {wsStatus === "connected" && (
-              <button type="button" onClick={sendPing} style={styles.buttonOutline}>
-                Send Ping
-              </button>
-            )}
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <img className="brand-logo" src="/logo.svg" alt="" />
+          <div>
+            <strong>AtomicSeat</strong>
+            <span>Premium ticketing</span>
           </div>
-          {wsMessages.length > 0 && (
-            <div style={styles.log}>
-              {wsMessages.map((msg, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: append-only log
-                <div key={i} style={styles.logLine}>
-                  {msg}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
+        <nav className="nav">
+          {(
+            [
+              ["/", "Dashboard"],
+              ["/concerts", "Inventory"],
+              ["/reservations", "Reservations"],
+            ] as const
+          ).map(([path, label]) => (
+            <NavLink
+              className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}
+              end={path === "/"}
+              key={path}
+              to={path}
+            >
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="api-chip">API {API_URL.replace(/^https?:\/\//, "")}</div>
+      </aside>
 
-        <div style={styles.footer}>
-          <span style={styles.dot} /> API: {API_URL}
-        </div>
-      </div>
+      <main className="main">
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">High concurrency ticketing</p>
+            <h1>{currentTitle}</h1>
+          </div>
+          <div className="topbar-actions">
+            <a className="button secondary" href={`${API_URL}/docs`}>
+              API docs
+            </a>
+            <button
+              className="button secondary"
+              disabled={actionLoading}
+              onClick={handleCleanup}
+              type="button"
+            >
+              Run cleanup
+            </button>
+          </div>
+        </header>
+
+        {notice && <div className="notice success">{notice}</div>}
+        {error && <div className="notice danger">{error}</div>}
+
+        {loading ? (
+          <div className="grid stats">
+            {["concerts", "tickets", "available", "pending", "completed", "expired"].map((key) => (
+              <div className="card skeleton" key={key} />
+            ))}
+          </div>
+        ) : (
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <section className="stack">
+                  <div className="grid stats">
+                    <Stat label="Concerts" value={metrics.concerts} />
+                    <Stat label="Total tickets" value={metrics.tickets} />
+                    <Stat label="Available" value={metrics.available} />
+                    <Stat label="Pending" value={metrics.pending} />
+                    <Stat label="Completed" value={metrics.completed} />
+                    <Stat label="Expired" value={metrics.expired} />
+                  </div>
+
+                  <div className="split">
+                    <div className="card">
+                      <div className="section-title">
+                        <h2>Recent reservations</h2>
+                        <Link className="link-button" to="/reservations">
+                          View all
+                        </Link>
+                      </div>
+                      <ReservationTable
+                        compact
+                        onPurchase={handlePurchase}
+                        reservations={reservations.slice(0, 6)}
+                      />
+                    </div>
+                    <div className="card">
+                      <div className="section-title">
+                        <h2>Low stock</h2>
+                      </div>
+                      {lowStock.length === 0 ? (
+                        <p className="empty">No low-stock concerts.</p>
+                      ) : (
+                        <div className="mini-list">
+                          {lowStock.map((concert) => (
+                            <button
+                              className="mini-row"
+                              key={concert.id}
+                              onClick={() => {
+                                setSelectedConcertId(concert.id);
+                                navigate("/concerts");
+                              }}
+                              type="button"
+                            >
+                              <span>{concert.name}</span>
+                              <strong>{concert.inventory.totalAvailable}</strong>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              }
+            />
+
+            <Route
+              path="/concerts"
+              element={
+                <section className="stack">
+                  <div className="toolbar">
+                    <input
+                      aria-label="Search concerts"
+                      className="input"
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Search concerts"
+                      value={search}
+                    />
+                  </div>
+                  <div className="concert-layout">
+                    <div className="card">
+                      <div className="section-title">
+                        <h2>Upcoming inventory</h2>
+                      </div>
+                      <ConcertTable
+                        concerts={concerts}
+                        selectedId={selectedConcert?.id}
+                        onSelect={(id) => setSelectedConcertId(id)}
+                      />
+                    </div>
+                    <div className="card detail-card">
+                      {detail ? (
+                        <>
+                          <div className="detail-header">
+                            <div>
+                              <h2>{detail.name}</h2>
+                              <p>
+                                {detail.venue} / {formatDate(detail.startsAt)}
+                              </p>
+                            </div>
+                            <strong>{detail.inventory.totalAvailable} left</strong>
+                          </div>
+                          <div className="inventory-grid">
+                            <Stat label="VIP available" value={detail.inventory.vipAvailable} />
+                            <Stat
+                              label="General available"
+                              value={detail.inventory.generalAvailable}
+                            />
+                            <Stat label="Held" value={detail.inventory.pending} />
+                            <Stat label="Sold" value={detail.inventory.sold} />
+                          </div>
+                          <div className="admin-note">
+                            <strong>Client checkout lives on the website.</strong>
+                            <span>
+                              This admin view monitors inventory, active holds, completed sales, and
+                              cleanup operations.
+                            </span>
+                          </div>
+                          <div className="section-title nested">
+                            <h2>Recent reservations</h2>
+                          </div>
+                          <ReservationTable
+                            compact
+                            onPurchase={handlePurchase}
+                            reservations={detail.recentReservations}
+                          />
+                        </>
+                      ) : (
+                        <p className="empty">Select a concert to inspect inventory.</p>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              }
+            />
+
+            <Route
+              path="/reservations"
+              element={
+                <section className="card">
+                  <div className="section-title">
+                    <h2>Reservation ledger</h2>
+                  </div>
+                  <ReservationTable onPurchase={handlePurchase} reservations={reservations} />
+                </section>
+              }
+            />
+            <Route path="*" element={<Navigate replace to="/" />} />
+          </Routes>
+        )}
+      </main>
     </div>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f8f9fa",
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    padding: 24,
-    margin: 0,
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 40,
-    maxWidth: 480,
-    width: "100%",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.08), 0 8px 30px rgba(0,0,0,0.04)",
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 700,
-    margin: "0 0 8px",
-    color: "#111",
-  },
-  description: {
-    fontSize: 15,
-    lineHeight: 1.6,
-    color: "#666",
-    margin: "0 0 32px",
-  },
-  section: {
-    marginBottom: 28,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 600,
-    margin: "0 0 4px",
-    color: "#333",
-  },
-  sectionDesc: {
-    fontSize: 13,
-    color: "#999",
-    margin: "0 0 12px",
-  },
-  button: {
-    padding: "10px 20px",
-    fontSize: 14,
-    fontWeight: 600,
-    border: "none",
-    borderRadius: 8,
-    cursor: "pointer",
-    backgroundColor: "#111",
-    color: "#fff",
-    transition: "opacity 0.15s",
-  },
-  buttonDanger: {
-    backgroundColor: "#e53e3e",
-  },
-  buttonOutline: {
-    padding: "10px 20px",
-    fontSize: 14,
-    fontWeight: 600,
-    border: "1.5px solid #ddd",
-    borderRadius: 8,
-    cursor: "pointer",
-    backgroundColor: "#fff",
-    color: "#333",
-  },
-  buttonRow: {
-    display: "flex",
-    gap: 8,
-  },
-  result: {
-    marginTop: 12,
-    padding: "10px 14px",
-    borderRadius: 8,
-    fontSize: 13,
-    fontFamily: "monospace",
-  },
-  resultSuccess: {
-    backgroundColor: "#f0fdf4",
-    color: "#16a34a",
-    border: "1px solid #bbf7d0",
-  },
-  resultError: {
-    backgroundColor: "#fef2f2",
-    color: "#dc2626",
-    border: "1px solid #fecaca",
-  },
-  log: {
-    marginTop: 12,
-    padding: 14,
-    backgroundColor: "#1a1a1a",
-    borderRadius: 8,
-    maxHeight: 160,
-    overflowY: "auto" as const,
-  },
-  logLine: {
-    fontSize: 12,
-    fontFamily: "monospace",
-    color: "#a3e635",
-    lineHeight: 1.8,
-  },
-  footer: {
-    paddingTop: 20,
-    borderTop: "1px solid #f0f0f0",
-    fontSize: 12,
-    color: "#999",
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: "50%",
-    backgroundColor: "#a3e635",
-    display: "inline-block",
-  },
-};
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="stat">
+      <span>{label}</span>
+      <strong>{value.toLocaleString()}</strong>
+    </div>
+  );
+}
+
+function ConcertTable({
+  concerts,
+  selectedId,
+  onSelect,
+}: {
+  concerts: Concert[];
+  selectedId?: string;
+  onSelect: (id: string) => void;
+}) {
+  if (concerts.length === 0) return <p className="empty">No concerts found.</p>;
+
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Concert</th>
+            <th>Starts</th>
+            <th className="num">VIP</th>
+            <th className="num">General</th>
+            <th className="num">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {concerts.map((concert) => (
+            <tr
+              className={selectedId === concert.id ? "selected-row" : ""}
+              key={concert.id}
+              onClick={() => onSelect(concert.id)}
+            >
+              <td>
+                <strong>{concert.name}</strong>
+                <span>{concert.venue}</span>
+              </td>
+              <td>{formatDate(concert.startsAt)}</td>
+              <td className="num">{concert.inventory.vipAvailable}</td>
+              <td className="num">{concert.inventory.generalAvailable}</td>
+              <td className="num">{concert.inventory.totalAvailable}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ReservationTable({
+  reservations,
+  compact = false,
+  onPurchase,
+}: {
+  reservations: Reservation[];
+  compact?: boolean;
+  onPurchase: (id: string) => void;
+}) {
+  if (reservations.length === 0) return <p className="empty">No reservations yet.</p>;
+
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Reservation</th>
+            {!compact && <th>Concert</th>}
+            <th>Category</th>
+            <th className="num">Qty</th>
+            <th>Status</th>
+            {!compact && <th className="num">Amount</th>}
+            <th>Expires</th>
+            <th className="actions">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {reservations.map((reservation) => (
+            <tr key={reservation.id}>
+              <td>
+                <strong>{reservation.id.slice(0, 8)}</strong>
+                <span>{formatDate(reservation.createdAt)}</span>
+              </td>
+              {!compact && <td>{reservation.concertName}</td>}
+              <td>{reservation.category}</td>
+              <td className="num">{reservation.quantity}</td>
+              <td>
+                <StatusBadge status={reservation.status} />
+                {reservation.paymentId?.startsWith("stripe_") && (
+                  <span className="payment-chip">Stripe verified</span>
+                )}
+              </td>
+              {!compact && <td className="num">{formatMoney(reservation.amountCents)}</td>}
+              <td>
+                {reservation.status === "PENDING" ? (
+                  <Countdown expiresAt={reservation.expiresAt} />
+                ) : (
+                  formatDate(reservation.expiresAt)
+                )}
+              </td>
+              <td className="actions">
+                {reservation.status === "PENDING" ? (
+                  <div className="row-actions">
+                    <button
+                      className="button small secondary-small"
+                      onClick={() => onPurchase(reservation.id)}
+                      type="button"
+                    >
+                      Manual
+                    </button>
+                  </div>
+                ) : (
+                  <span className="muted">Closed</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
