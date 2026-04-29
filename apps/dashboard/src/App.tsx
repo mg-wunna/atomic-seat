@@ -45,6 +45,11 @@ type Metrics = {
   expired: number;
 };
 
+type SeedResult = {
+  concerts: number;
+  tickets: number;
+};
+
 type ConcertDetail = Concert & {
   recentReservations: Reservation[];
 };
@@ -211,6 +216,22 @@ export function App() {
     }
   }
 
+  async function handleSeed() {
+    setActionLoading(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await api<SeedResult>("/seed", { method: "POST" });
+      setNotice(`Seeded ${result.concerts} concert(s) and ${result.tickets} ticket(s).`);
+      await loadData();
+      if (selectedConcert?.id) await loadDetail(selectedConcert.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Seed failed");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   const lowStock = concerts.filter((concert) => concert.inventory.totalAvailable < 30);
   const currentTitle =
     location.pathname === "/concerts"
@@ -260,6 +281,14 @@ export function App() {
             <a className="button secondary" href={`${API_URL}/docs`}>
               API docs
             </a>
+            <button
+              className="button secondary"
+              disabled={actionLoading}
+              onClick={handleSeed}
+              type="button"
+            >
+              Run seed
+            </button>
             <button
               className="button secondary"
               disabled={actionLoading}

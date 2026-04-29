@@ -1,4 +1,5 @@
 import { rmSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { sqlitePath, initializeDataSource, AppDataSource } from "./data-source.js";
 import { ConcertEntity, TicketEntity, ReservationEntity } from "./entities.js";
 import type { Concert, Ticket } from "./entities.js";
@@ -42,50 +43,81 @@ function createTickets(concertId: string, category: "VIP" | "General", count: nu
   }));
 }
 
+export async function seedDatabase() {
+  await initializeDataSource();
+
+  const queryRunner = AppDataSource.createQueryRunner();
+  await queryRunner.connect();
+  await queryRunner.startTransaction();
+
+  try {
+    const concertRepo = queryRunner.manager.getRepository<Concert>(ConcertEntity);
+    const ticketRepo = queryRunner.manager.getRepository<Ticket>(TicketEntity);
+    const reservationRepo = queryRunner.manager.getRepository(ReservationEntity);
+
+    await reservationRepo.clear();
+    await ticketRepo.clear();
+    await concertRepo.clear();
+
+    let ticketsSeeded = 0;
+
+    for (const seed of concerts) {
+      const totalStock = seed.vip + seed.general;
+      await concertRepo.save({
+        id: seed.id,
+        title: seed.title,
+        venue: seed.venue,
+        startsAt: seed.startsAt,
+        totalStock,
+        availableStock: totalStock,
+        createdAt: new Date(),
+      });
+
+      const tickets = [
+        ...createTickets(seed.id, "VIP", seed.vip),
+        ...createTickets(seed.id, "General", seed.general),
+      ];
+      await ticketRepo.save(tickets);
+      ticketsSeeded += tickets.length;
+    }
+
+    await queryRunner.commitTransaction();
+
+    const explain = await AppDataSource.query(
+      "EXPLAIN QUERY PLAN SELECT * FROM reservations WHERE status = 'PENDING'",
+    );
+
+    return {
+      concerts: concerts.length,
+      tickets: ticketsSeeded,
+      reservations: 0,
+      sqlitePath,
+      explain,
+    };
+  } catch (error) {
+    await queryRunner.rollbackTransaction();
+    throw error;
+  } finally {
+    await queryRunner.release();
+  }
+}
+
 async function main() {
   if (AppDataSource.isInitialized) await AppDataSource.destroy();
   rmSync(sqlitePath, { force: true });
   rmSync(`${sqlitePath}-shm`, { force: true });
   rmSync(`${sqlitePath}-wal`, { force: true });
 
-  await initializeDataSource();
-
-  const concertRepo = AppDataSource.getRepository<Concert>(ConcertEntity);
-  const ticketRepo = AppDataSource.getRepository<Ticket>(TicketEntity);
-  const reservationRepo = AppDataSource.getRepository(ReservationEntity);
-
-  await reservationRepo.clear();
-  await ticketRepo.clear();
-  await concertRepo.clear();
-
-  for (const seed of concerts) {
-    const totalStock = seed.vip + seed.general;
-    await concertRepo.save({
-      id: seed.id,
-      title: seed.title,
-      venue: seed.venue,
-      startsAt: seed.startsAt,
-      totalStock,
-      availableStock: totalStock,
-      createdAt: new Date(),
-    });
-
-    await ticketRepo.save([
-      ...createTickets(seed.id, "VIP", seed.vip),
-      ...createTickets(seed.id, "General", seed.general),
-    ]);
-  }
-
-  const explain = await AppDataSource.query(
-    "EXPLAIN QUERY PLAN SELECT * FROM reservations WHERE status = 'PENDING'",
-  );
-  process.stderr.write(`[seed] Seeded ${concerts.length} concerts into ${sqlitePath}\n`);
-  process.stderr.write(`[seed] EXPLAIN QUERY PLAN ${JSON.stringify(explain)}\n`);
+  const result = await seedDatabase();
+  process.stderr.write(`[seed] Seeded ${result.concerts} concerts into ${result.sqlitePath}\n`);
+  process.stderr.write(`[seed] EXPLAIN QUERY PLAN ${JSON.stringify(result.explain)}\n`);
 
   await AppDataSource.destroy();
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

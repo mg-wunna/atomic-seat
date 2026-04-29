@@ -5,6 +5,7 @@ process.env.SQLITE_PATH = `storage/test-${Date.now()}-${Math.random().toString(1
 
 const { AppDataSource, initializeDataSource, sqlitePath } = await import("../src/data-source.js");
 const { ConcertEntity, ReservationEntity, TicketEntity } = await import("../src/entities.js");
+const { seedDatabase } = await import("../src/seed.js");
 const { cleanup, purchase, reserve } = await import("../src/services/ticketing.js");
 
 async function resetDatabase(stock = 2) {
@@ -123,6 +124,25 @@ try {
     assert.equal(result.expiredReservations, 1);
     assert.equal(result.releasedTickets, 1);
     assert.equal(concert.availableStock, 2);
+  });
+
+  await run("seed database resets demo concerts and tickets", async () => {
+    await reserve({
+      concertId: "concert-test",
+      userId: "buyer-1",
+      category: "General",
+    });
+
+    const result = await seedDatabase();
+    const concerts = await AppDataSource.getRepository(ConcertEntity).count();
+    const tickets = await AppDataSource.getRepository(TicketEntity).count();
+    const reservations = await AppDataSource.getRepository(ReservationEntity).count();
+
+    assert.equal(result.concerts, 3);
+    assert.equal(result.tickets, 234);
+    assert.equal(concerts, 3);
+    assert.equal(tickets, 234);
+    assert.equal(reservations, 0);
   });
 
   await run("EXPLAIN QUERY PLAN uses the partial pending status index", async () => {

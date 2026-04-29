@@ -4,6 +4,7 @@ import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { initializeDataSource } from "./data-source.js";
 import { HttpError } from "./errors.js";
+import { seedDatabase } from "./seed.js";
 import {
   cleanup,
   confirmStripePayment,
@@ -90,6 +91,11 @@ app.post(
 app.post(
   "/cleanup",
   asyncRoute(async (req, res) => res.json({ data: await cleanup(req.body ?? {}) })),
+);
+
+app.post(
+  "/seed",
+  asyncRoute(async (_req, res) => res.json({ data: await seedDatabase() })),
 );
 
 app.post(
@@ -188,6 +194,14 @@ app.get("/openapi.json", (_req, res) =>
           },
           responses: {
             "200": { description: "Expired reservation count and released ticket count" },
+          },
+        },
+      },
+      "/seed": {
+        post: {
+          summary: "Reset demo data and seed concerts, tickets, and inventory",
+          responses: {
+            "200": { description: "Seed summary" },
           },
         },
       },
